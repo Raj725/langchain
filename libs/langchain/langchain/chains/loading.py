@@ -535,6 +535,28 @@ def _load_vector_db_qa(config: dict, **kwargs: Any) -> VectorDBQA:
     )
 
 
+def _load_pebblo_retrieval_qa(config: dict, **kwargs: Any) -> PebbloRetrievalQA:
+    if "auth_context" in kwargs:
+        auth_context = kwargs.pop("auth_context")
+    else:
+        raise ValueError("`auth_context` must be present.")
+    if "combine_documents_chain" in config:
+        combine_documents_chain_config = config.pop("combine_documents_chain")
+        combine_documents_chain = load_chain_from_config(combine_documents_chain_config)
+    elif "combine_documents_chain_path" in config:
+        combine_documents_chain = load_chain(config.pop("combine_documents_chain_path"))
+    else:
+        raise ValueError(
+            "One of `combine_documents_chain` or "
+            "`combine_documents_chain_path` must be present."
+        )
+    return PebbloRetrievalQA(
+        combine_documents_chain=combine_documents_chain,  # type: ignore[arg-type]
+        auth_context=auth_context,
+        **config,
+    )
+
+
 def _load_graph_cypher_chain(config: dict, **kwargs: Any) -> GraphCypherQAChain:
     if "graph" in kwargs:
         graph = kwargs.pop("graph")
