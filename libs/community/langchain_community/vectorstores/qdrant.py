@@ -603,6 +603,15 @@ class Qdrant(VectorStore):
         else:
             qdrant_filter = filter
 
+        # Identity & Semantic Filtering if safe_retriever is used
+        safe_retrieval = kwargs.pop("safe_retrieval", False)
+        if safe_retrieval:
+            auth_context = kwargs.pop("auth_context", None)
+            semantic_context = kwargs.pop("semantic_context", None)
+            qdrant_filter = self._add_safe_retrival_filter(
+                qdrant_filter, auth_context, semantic_context
+            )
+
         query_vector = embedding
         if self.vector_name is not None:
             query_vector = (self.vector_name, embedding)  # type: ignore[assignment]
@@ -2281,3 +2290,123 @@ class Qdrant(VectorStore):
             )
 
         return sync_client, async_client
+
+    def _add_safe_retrival_filter(
+        self, qdrant_filter, auth_context, semantic_context
+    ) -> Optional[rest.Filter]:
+        # Add authorized identity filter
+        filters = qdrant_filter
+        if auth_context:
+            filters = self._apply_identity_enforcement(filters, auth_context)
+        if semantic_context:
+            filters = self._apply_semantic_enforcement(filters, semantic_context)
+        return filters
+
+    @staticmethod
+    def _apply_identity_enforcement(
+        existing_filter, auth_context
+    ) -> Optional[rest.Filter]:
+        """
+        Add identity enforcement filter
+        """
+        import qdrant_client.http.models as rest
+
+        if auth_context is not None:
+            # Create a identity enforcement filter condition
+            identity_enforcement_filter = rest.FieldCondition(
+                key="metadata.authorized_identities",
+                match=rest.MatchAny(any=auth_context.authorized_identities),
+            )
+        else:
+            raise ValueError("auth_context is None")
+
+        if existing_filter:
+            # Check if existing_filter is a qdrant-client filter
+            if isinstance(existing_filter, rest.Filter):
+                # If 'must' exists in the existing filter
+                if existing_filter.must:
+                    # Error if 'authorized_identities' filter is already present
+                    for condition in existing_filter.must:
+                        if (
+                            hasattr(condition, "key")
+                            and condition.key == "metadata.authorized_identities"
+                        ):
+                            pass
+
+                    # Add identity enforcement filter to 'must' conditions
+                    existing_filter.must.append(identity_enforcement_filter)
+                else:
+                    # Set 'must' condition with identity enforcement filter
+                    existing_filter.must = [identity_enforcement_filter]
+            else:
+                pass
+
+        else:
+            existing_filter = rest.Filter(must=[identity_enforcement_filter])
+
+        return existing_filter
+
+    @staticmethod
+    def _apply_semantic_enforcement(filters, semantic_context):
+        """
+        Add semantic enforcement filter
+        """
+        import qdrant_client.http.models as rest
+
+        # Create a semantic enforcement filter condition
+        semantic_filters: List[
+            Union[
+                rest.FieldCondition,
+                rest.IsEmptyCondition,
+                rest.IsNullCondition,
+                rest.HasIdCondition,
+                rest.NestedCondition,
+                rest.Filter,
+            ]
+        ] = []
+
+        if (
+            semantic_context is not None
+            and semantic_context.pebblo_semantic_topics is not None
+        ):
+            semantic_topics_filter = rest.FieldCondition(
+                key="metadata.pebblo_semantic_topics",
+                match=rest.MatchAny(any=semantic_context.pebblo_semantic_topics.deny),
+            )
+            semantic_filters.append(semantic_topics_filter)
+        if (
+            semantic_context is not None
+            and semantic_context.pebblo_semantic_entities is not None
+        ):
+            semantic_entities_filter = rest.FieldCondition(
+                key="metadata.pebblo_semantic_entities",
+                match=rest.MatchAny(any=semantic_context.pebblo_semantic_entities.deny),
+            )
+            semantic_filters.append(semantic_entities_filter)
+
+        # If 'filters' already exists
+        if filters:
+            # Check if filters is a qdrant-client filter
+            if isinstance(filters, rest.Filter):
+                # If 'must_not' condition exists in the existing filter
+                if isinstance(filters.must_not, list):
+                    # Warn if 'pebblo_semantic_topics' or 'pebblo_semantic_entities'
+                    # filter is overridden
+                    for condition in filters.must_not:
+                        if hasattr(condition, "key"):
+                            if condition.key == "metadata.pebblo_semantic_topics":
+                                pass
+                            if condition.key == "metadata.pebblo_semantic_entities":
+                                pass
+                    # Add semantic enforcement filters to 'must_not' conditions
+                    filters.must_not.extend(semantic_filters)
+                else:
+                    # Set 'must_not' condition with semantic enforcement filters
+                    filters.must_not = semantic_filters
+            else:
+                pass
+        else:
+            # If 'filter' does not exist in search_kwargs, create it
+            filters = rest.Filter(must_not=semantic_filters)
+
+        return filters
