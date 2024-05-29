@@ -21,11 +21,15 @@ from langchain_community.chains.pebblo_retrieval.models import (
     AuthContext,
     SemanticContext,
 )
-from langchain_community.vectorstores import Pinecone, Qdrant
+from langchain_community.vectorstores import PGVector, Pinecone, Qdrant
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_VECTORSTORES = [Pinecone, Qdrant]
+SUPPORTED_VECTORSTORES = [
+    Pinecone,
+    Qdrant,
+    PGVector,
+]
 
 
 def set_enforcement_filters(
@@ -233,6 +237,40 @@ def _apply_pinecone_authorization_filter(
         }
 
 
+def _apply_pgvector_semantic_filter(
+    search_kwargs: dict, semantic_context: Optional[SemanticContext]
+) -> None:
+    """
+    Set semantic enforcement filter in search_kwargs for PGVector vectorstore.
+    """
+    # Check if semantic_context is provided
+    semantic_context = semantic_context
+    if semantic_context is not None:
+        if semantic_context.pebblo_semantic_topics is not None:
+            # Add pebblo_semantic_topics filter to search_kwargs
+            search_kwargs.setdefault("filter", {})["pebblo_semantic_topics"] = {
+                "$ne": semantic_context.pebblo_semantic_topics.deny
+            }
+
+        if semantic_context.pebblo_semantic_entities is not None:
+            # Add pebblo_semantic_entities filter to search_kwargs
+            search_kwargs.setdefault("filter", {})["pebblo_semantic_entities"] = {
+                "$ne": semantic_context.pebblo_semantic_entities.deny
+            }
+
+
+def _apply_pgvector_authorization_filter(
+    search_kwargs: dict, auth_context: Optional[AuthContext]
+) -> None:
+    """
+    Set identity enforcement filter in search_kwargs for PGVector vectorstore.
+    """
+    if auth_context is not None:
+        search_kwargs.setdefault("filter", {})["authorized_identities"] = {
+            "$eq": auth_context.user_auth
+        }
+
+
 def _set_identity_enforcement_filter(
     retriever: VectorStoreRetriever, auth_context: Optional[AuthContext]
 ) -> None:
@@ -247,6 +285,8 @@ def _set_identity_enforcement_filter(
         _apply_pinecone_authorization_filter(search_kwargs, auth_context)
     elif isinstance(retriever.vectorstore, Qdrant):
         _apply_qdrant_authorization_filter(search_kwargs, auth_context)
+    elif isinstance(retriever.vectorstore, PGVector):
+        _apply_pgvector_authorization_filter(search_kwargs, auth_context)
 
 
 def _set_semantic_enforcement_filter(
@@ -263,3 +303,5 @@ def _set_semantic_enforcement_filter(
         _apply_pinecone_semantic_filter(search_kwargs, semantic_context)
     elif isinstance(retriever.vectorstore, Qdrant):
         _apply_qdrant_semantic_filter(search_kwargs, semantic_context)
+    elif isinstance(retriever.vectorstore, PGVector):
+        _apply_pgvector_semantic_filter(search_kwargs, semantic_context)
