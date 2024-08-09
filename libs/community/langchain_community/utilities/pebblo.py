@@ -64,13 +64,6 @@ SUPPORTED_LOADERS = (*file_loader, *dir_loader, *in_memory)
 logger = logging.getLogger(__name__)
 
 
-class IndexedDocument(Document):
-    """Pebblo Indexed Document."""
-
-    pb_id: str
-    """Unique ID of the document."""
-
-
 class Runtime(BaseModel):
     """Pebblo Runtime."""
 
