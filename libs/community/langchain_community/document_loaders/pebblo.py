@@ -180,9 +180,8 @@ class PebbloSafeLoader(BaseLoader):
         }
         if loading_end is True:
             PebbloSafeLoader.set_loader_sent()
-        doc_content = [doc.dict() for _, doc in indexed_docs.items()]
         docs = []
-        for doc in doc_content:
+        for doc_id, doc in indexed_docs.items():
             doc_metadata = doc.get("metadata", {})
             doc_authorized_identities = doc_metadata.get("authorized_identities", [])
             doc_source_path = get_full_path(
@@ -199,7 +198,6 @@ class PebbloSafeLoader(BaseLoader):
             page_content = str(doc.get("page_content"))
             page_content_size = self.calculate_content_size(page_content)
             self.source_aggregate_size += page_content_size
-            doc_id = doc.get("pb_id", None) or 0
             docs.append(
                 {
                     "doc": page_content,
@@ -503,11 +501,6 @@ class PebbloSafeLoader(BaseLoader):
         Returns:
             List[Document]: A list of Document objects with added semantic metadata.
         """
-        indexed_docs = {
-            doc.pb_id: Document(page_content=doc.page_content, metadata=doc.metadata)
-            for doc in indexed_docs
-        }
-
         for classified_doc in classified_docs.values():
             doc_id = classified_doc.get("pb_id")
             if doc_id in indexed_docs:
@@ -540,13 +533,13 @@ class PebbloSafeLoader(BaseLoader):
         self, indexed_docs: dict, classified_docs: dict
     ) -> None:
         """Add Pebblo specific metadata to documents."""
-        for doc in indexed_docs:
+        for pb_id, doc in indexed_docs.items():
             doc_metadata = doc.metadata
             doc_metadata["full_path"] = get_full_path(
                 doc_metadata.get(
                     "full_path", doc_metadata.get("source", self.source_path)
                 )
             )
-            doc_metadata["pb_checksum"] = classified_docs.get(doc.pb_id, {}).get(
+            doc_metadata["pb_checksum"] = classified_docs.get(pb_id, {}).get(
                 "pb_checksum", None
             )
