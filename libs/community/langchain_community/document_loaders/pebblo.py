@@ -116,15 +116,7 @@ class PebbloSafeLoader(BaseLoader):
             self._add_pebblo_specific_metadata(indexed_docs, classified_docs)
             if self.load_semantic:
                 self._add_semantic_to_docs(indexed_docs, classified_docs)
-            # self.docs = batch
-            # self.docs_with_id = self._index_docs()
-            # classified_docs = self._classify_documents(loading_end=is_last_batch)
-            # self._add_pebblo_specific_metadata(classified_docs)
-            # if self.load_semantic:
-            #     batch_processed_docs = self._add_semantic_to_docs(classified_docs)
-            # else:
-            #     batch_processed_docs = self._unindex_docs()
-            processed_docs.extend(batch_processed_docs)
+            processed_docs.extend(batch)
 
         self.docs = processed_docs
 
@@ -488,7 +480,7 @@ class PebbloSafeLoader(BaseLoader):
         return size
 
     @staticmethod
-    def _index_docs(batch) -> dict:
+    def _index_docs(batch: List[Document]) -> dict:
         """
         Indexes the documents and returns a list of IndexedDocument objects.
 
