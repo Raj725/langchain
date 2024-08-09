@@ -180,7 +180,7 @@ class PebbloSafeLoader(BaseLoader):
         }
         if loading_end is True:
             PebbloSafeLoader.set_loader_sent()
-        doc_content = [doc.dict() for doc in indexed_docs]
+        doc_content = [doc.dict() for _, doc in indexed_docs.items()]
         docs = []
         for doc in doc_content:
             doc_metadata = doc.get("metadata", {})
@@ -233,9 +233,9 @@ class PebbloSafeLoader(BaseLoader):
         if loading_end is True:
             payload["loading_end"] = "true"
             if "loader_details" in payload:
-                payload["loader_details"][
-                    "source_aggregate_size"
-                ] = self.source_aggregate_size
+                payload["loader_details"]["source_aggregate_size"] = (
+                    self.source_aggregate_size
+                )
         payload = Doc(**payload).dict(exclude_unset=True)
         classified_docs = {}
         # Raw payload to be sent to classifier
