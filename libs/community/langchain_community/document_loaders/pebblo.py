@@ -148,7 +148,7 @@ class PebbloSafeLoader(BaseLoader):
             self._add_pebblo_specific_metadata(indexed_docs, classified_doc)
             if self.load_semantic:
                 self._add_semantic_to_docs(indexed_docs, classified_doc)
-            yield batch
+            yield doc
 
     @classmethod
     def set_discover_sent(cls) -> None:
