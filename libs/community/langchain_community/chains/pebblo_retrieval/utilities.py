@@ -17,7 +17,9 @@ from requests.exceptions import RequestException
 from langchain_community.chains.pebblo_retrieval.models import (
     App,
     AuthContext,
+    Context,
     Framework,
+    Prompt,
     Qa,
     Runtime,
 )
@@ -167,7 +169,7 @@ class PebbloAPIWrapper(BaseModel):
             prompt_gov_enabled (bool): Whether prompt governance is enabled.
         """
         pebblo_resp = None
-        qa_payload = self.build_prompt_qa_payload(
+        payload = self.build_prompt_qa_payload(
             app_name,
             retriever,
             question,
@@ -178,7 +180,6 @@ class PebbloAPIWrapper(BaseModel):
             prompt_time,
             prompt_gov_enabled,
         )
-        payload = qa_payload.dict(exclude_unset=True)
 
         if self.classifier_location == "local":
             # Send prompt to local classifier
@@ -347,7 +348,7 @@ class PebbloAPIWrapper(BaseModel):
         prompt_entities: Dict[str, Any],
         prompt_time: str,
         prompt_gov_enabled: bool = False,
-    ) -> Qa:
+    ) -> dict:
         """
         Build the QA payload for the prompt.
 
@@ -363,40 +364,34 @@ class PebbloAPIWrapper(BaseModel):
             prompt_gov_enabled (bool): Whether prompt governance is enabled.
 
         Returns:
-            Qa: The QA payload for the prompt.
+            dict: The QA payload for the prompt.
         """
-        qa = {
-            "name": app_name,
-            "context": [
-                {
-                    "retrieved_from": doc.metadata.get(
+        qa = Qa(
+            name=app_name,
+            context=[
+                Context(
+                    retrieved_from=doc.metadata.get(
                         "full_path", doc.metadata.get("source")
                     ),
-                    "doc": doc.page_content,
-                    "vector_db": retriever.vectorstore.__class__.__name__,
-                    **(
-                        {"pb_checksum": doc.metadata.get("pb_checksum")}
-                        if doc.metadata.get("pb_checksum")
-                        else {}
-                    ),
-                }
+                    doc=doc.page_content,
+                    vector_db=retriever.vectorstore.__class__.__name__,
+                    pb_checksum=doc.metadata.get("pb_checksum"),
+                )
                 for doc in docs
                 if isinstance(doc, Document)
             ],
-            "prompt": {
-                "data": question,
-                "entities": prompt_entities.get("entities", {}),
-                "entityCount": prompt_entities.get("entityCount", 0),
-                "prompt_gov_enabled": prompt_gov_enabled,
-            },
-            "response": {
-                "data": answer,
-            },
-            "prompt_time": prompt_time,
-            "user": auth_context.user_id if auth_context else "unknown",
-            "user_identities": auth_context.user_auth
+            prompt=Prompt(
+                data=question,
+                entities=prompt_entities.get("entities", {}),
+                entityCount=prompt_entities.get("entityCount", 0),
+                prompt_gov_enabled=prompt_gov_enabled,
+            ),
+            response=Prompt(data=answer),
+            prompt_time=prompt_time,
+            user=auth_context.user_id if auth_context else "unknown",
+            user_identities=auth_context.user_auth
             if auth_context and hasattr(auth_context, "user_auth")
             else [],
-            "classifier_location": self.classifier_location,
-        }
-        return Qa(**qa)
+            classifier_location=self.classifier_location,
+        )
+        return qa.dict(exclude_unset=True)
