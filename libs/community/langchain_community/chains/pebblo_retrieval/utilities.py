@@ -45,7 +45,9 @@ def get_runtime() -> Tuple[Framework, Runtime]:
         Tuple[Framework, Runtime]: Framework and Runtime for the current app instance.
     """
     runtime_env = get_runtime_environment()
-    framework = Framework(name="langchain", version=runtime_env.get("library_version"))
+    framework = Framework(
+        name="langchain", version=runtime_env.get("library_version", None)
+    )
     uname = platform.uname()
     runtime = Runtime(
         host=uname.node,
@@ -165,7 +167,7 @@ class PebbloAPIWrapper(BaseModel):
             prompt_gov_enabled (bool): Whether prompt governance is enabled.
         """
         pebblo_resp = None
-        payload = self.build_prompt_qa_payload(
+        qa_payload = self.build_prompt_qa_payload(
             app_name,
             retriever,
             question,
@@ -176,6 +178,7 @@ class PebbloAPIWrapper(BaseModel):
             prompt_time,
             prompt_gov_enabled,
         )
+        payload = qa_payload.dict(exclude_unset=True)
 
         if self.classifier_location == "local":
             # Send prompt to local classifier
@@ -344,7 +347,7 @@ class PebbloAPIWrapper(BaseModel):
         prompt_entities: Dict[str, Any],
         prompt_time: str,
         prompt_gov_enabled: bool = False,
-    ) -> dict:
+    ) -> Qa:
         """
         Build the QA payload for the prompt.
 
@@ -360,7 +363,7 @@ class PebbloAPIWrapper(BaseModel):
             prompt_gov_enabled (bool): Whether prompt governance is enabled.
 
         Returns:
-            dict: The QA payload for the prompt.
+            Qa: The QA payload for the prompt.
         """
         qa = {
             "name": app_name,
@@ -396,5 +399,4 @@ class PebbloAPIWrapper(BaseModel):
             else [],
             "classifier_location": self.classifier_location,
         }
-        qa_payload = Qa(**qa)
-        return qa_payload.dict(exclude_unset=True)
+        return Qa(**qa)
