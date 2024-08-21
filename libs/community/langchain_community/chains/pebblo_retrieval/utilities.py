@@ -7,6 +7,7 @@ from http import HTTPStatus
 from typing import Any, Dict, List, Optional, Tuple
 
 import aiohttp
+from aiohttp import ClientTimeout
 from langchain_core.documents import Document
 from langchain_core.env import get_runtime_environment
 from langchain_core.pydantic_v1 import BaseModel
@@ -449,13 +450,14 @@ class PebbloRetrievalAPIWrapper(BaseModel):
             Any: Response json if the request is successful.
         """
         try:
+            client_timeout = ClientTimeout(total=timeout)
             async with aiohttp.ClientSession() as asession:
                 async with asession.request(
                     method=method,
                     url=url,
                     json=payload,
                     headers=headers,
-                    timeout=timeout,
+                    timeout=client_timeout,
                 ) as response:
                     if response.status >= HTTPStatus.INTERNAL_SERVER_ERROR:
                         logger.warning(f"Pebblo Server: Error {response.status}")
