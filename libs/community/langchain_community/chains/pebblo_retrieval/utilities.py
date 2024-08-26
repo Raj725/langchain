@@ -129,6 +129,10 @@ class PebbloRetrievalAPIWrapper(BaseModel):
             kwargs, "cloud_url", "PEBBLO_CLOUD_URL", _DEFAULT_PEBBLO_CLOUD_URL
         )
         super().__init__(**kwargs)
+        # Initialize policy_cache with default values
+        self.policy_cache: Tuple[
+            Optional[Dict[str, Any]], Optional[SemanticContext]
+        ] = (None, None)
         self._start_policy_refresh_thread()
 
     def send_app_discover(self, app: App) -> None:
@@ -420,10 +424,12 @@ class PebbloRetrievalAPIWrapper(BaseModel):
                 return policy.get(app_name)
         return None
 
-    def _update_local_policy_cache(self, policy: dict) -> None:
+    def _update_local_policy_cache(self, policy: Optional[Dict[str, Any]]) -> None:
         """Update the local cache with the fetched policy."""
         # Generate semantic context from the first policy
-        semantic_context = self._generate_semantic_context(policy)
+        semantic_context = None
+        if policy:
+            semantic_context = self._generate_semantic_context(policy)
         self.policy_cache = (policy, semantic_context)
 
     def _generate_semantic_context(self, policy: Dict[str, Any]) -> SemanticContext:
