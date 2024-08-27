@@ -117,6 +117,11 @@ class PebbloRetrievalAPIWrapper(BaseModel):
     """Name of the app"""
     policy_source: PolicySource = PolicySource.FILE
     """Source of the policy, file or cloud"""
+    policy_cache: Tuple[Optional[PolicyConfig], Optional[SemanticContext]] = (
+        None,
+        None,
+    )
+    """Local cache for the policy"""
 
     def __init__(self, **kwargs: Any):
         """Validate that api key in environment."""
@@ -130,11 +135,6 @@ class PebbloRetrievalAPIWrapper(BaseModel):
             kwargs, "cloud_url", "PEBBLO_CLOUD_URL", _DEFAULT_PEBBLO_CLOUD_URL
         )
         super().__init__(**kwargs)
-        # Initialize policy_cache with default values
-        self.policy_cache: Tuple[Optional[PolicyConfig], Optional[SemanticContext]] = (
-            None,
-            None,
-        )
         self._start_policy_refresh_thread()
 
     def send_app_discover(self, app: App) -> None:
@@ -382,9 +382,11 @@ class PebbloRetrievalAPIWrapper(BaseModel):
 
         # Check if the user is superuser using the user_id in policy and auth_context
         if auth_context.user_id in [superuser.name for superuser in superusers]:
+            logger.warning(f"User {auth_context.user_id} is a superuser.")
             # If the user is superuser, then return None(todo: Update later)
             return None
-
+        else:
+            logger.warning(f"User {auth_context.user_id} is not a superuser.")
         return auth_context
 
     def _start_policy_refresh_thread(self) -> None:
@@ -452,6 +454,8 @@ class PebbloRetrievalAPIWrapper(BaseModel):
             with open(policy_file, "r") as f:
                 policy_data = json.load(f)
             return PolicyConfig(**policy_data)
+        else:
+            logger.warning(f"Policy file {policy_file} not found.")
         return None
 
     def _update_local_policy_cache(self, policy: Optional[PolicyConfig]) -> None:
@@ -461,6 +465,7 @@ class PebbloRetrievalAPIWrapper(BaseModel):
             # Generate semantic context from the policy
             semantic_context = self._generate_semantic_context(policy)
         self.policy_cache = (policy, semantic_context)
+        logger.warning(f"Policy cache updated: {self.policy_cache}")
 
     def _generate_semantic_context(self, policy: PolicyConfig) -> SemanticContext:
         semantic_context = dict()
