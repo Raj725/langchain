@@ -362,13 +362,13 @@ class PebbloRetrievalAPIWrapper(BaseModel):
         return self.policy_cache[1] if self.policy_cache else None
 
     def enforce_identity_policy(
-        self, auth_context: AuthContext
+        self, auth_context: Optional[AuthContext]
     ) -> Optional[AuthContext]:
         """
         Enforce identity policy on the given auth context.
 
         Args:
-            auth_context (AuthContext): Authentication context to be enforced.
+            auth_context (Optional[AuthContext]): Authentication context.
 
         Returns:
             Optional[AuthContext]: Enforced authentication context.
@@ -376,13 +376,14 @@ class PebbloRetrievalAPIWrapper(BaseModel):
         if not auth_context:
             return None
 
+        policy = self.policy_cache[0]
         # Get superusers from the policy
-        superusers = self.policy_cache[0].identity.superuser
+        superusers = policy.identity.superuser if policy else []
 
         # Check if the user is superuser using the user_id in policy and auth_context
-        # If the user is superuser, then return None
         if auth_context.user_id in [superuser.name for superuser in superusers]:
-            auth_context = None
+            # If the user is superuser, then return None(todo: Update later)
+            return None
 
         return auth_context
 
@@ -404,8 +405,6 @@ class PebbloRetrievalAPIWrapper(BaseModel):
                     # Fetch policy from the Pebblo cloud
                     policy = self.get_policy_from_api(self.app_name)
 
-                # Parse the fetched policy
-                policy = PolicyConfig(**policy) if policy else None
                 # Update the local cache with the fetched policy
                 self._update_local_policy_cache(policy)
             except Exception as e:
@@ -413,7 +412,7 @@ class PebbloRetrievalAPIWrapper(BaseModel):
             # Sleep for the refresh interval
             time.sleep(_POLICY_REFRESH_INTERVAL_SEC)
 
-    def get_policy_from_api(self, app_name: str) -> Optional[Dict[str, Any]]:
+    def get_policy_from_api(self, app_name: str) -> Optional[PolicyConfig]:
         """
         Get the policy for an app from the Pebblo Cloud.
 
@@ -423,7 +422,7 @@ class PebbloRetrievalAPIWrapper(BaseModel):
         Returns:
             Optional[Dict[str, Any]]: Policy for the app.
         """
-        policy = None
+        policy_obj = None
         policy_url = f"{self.cloud_url}{Routes.app_policy}"
         logger.warning(f"Getting policy from Pebblo Cloud: {policy_url}")
         headers = self._make_headers(cloud_request=True)
@@ -431,10 +430,11 @@ class PebbloRetrievalAPIWrapper(BaseModel):
         response = self.make_request("POST", policy_url, headers, payload)
         if response and response.status_code == HTTPStatus.OK:
             policy = response.json()
-        return policy
+            policy_obj = PolicyConfig(**policy)
+        return policy_obj
 
     @staticmethod
-    def get_policy_from_file(app_name: str) -> Optional[Dict[str, Any]]:
+    def get_policy_from_file(app_name: str) -> Optional[PolicyConfig]:
         """
         Get the policy for an app from the policy.json file.
 
@@ -446,12 +446,12 @@ class PebbloRetrievalAPIWrapper(BaseModel):
         """
 
         # read the policy file from current directory
-        policy_file = "policy.json"
+        policy_file = f"policy-{app_name}.json"
         logger.warning(f"Reading policy file: {policy_file}")
         if os.path.exists(policy_file):
             with open(policy_file, "r") as f:
-                policy = json.load(f)
-                return policy.get(app_name)
+                policy_data = json.load(f)
+            return PolicyConfig(**policy_data)
         return None
 
     def _update_local_policy_cache(self, policy: Optional[PolicyConfig]) -> None:
