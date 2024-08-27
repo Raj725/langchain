@@ -398,8 +398,6 @@ class PebbloRetrievalAPIWrapper(BaseModel):
         """Fetch policy from the Pebblo cloud or a file at regular intervals."""
         while True:
             try:
-                policy = None
-                logger.info(f"Fetching policy from source: {self.policy_source}")
                 if self.policy_source == "file":
                     # Read policy from a file
                     policy = self.get_policy_from_file(self.app_name)
@@ -426,13 +424,14 @@ class PebbloRetrievalAPIWrapper(BaseModel):
         """
         policy_obj = None
         policy_url = f"{self.cloud_url}{Routes.app_policy}"
-        logger.warning(f"Getting policy from Pebblo Cloud: {policy_url}")
         headers = self._make_headers(cloud_request=True)
         payload = {"app_name": app_name}
         response = self.make_request("POST", policy_url, headers, payload)
         if response and response.status_code == HTTPStatus.OK:
             policy = response.json()
             policy_obj = PolicyConfig(**policy)
+        else:
+            logger.warning(f"Failed to fetch policy for {app_name}")
         return policy_obj
 
     @staticmethod
@@ -449,7 +448,6 @@ class PebbloRetrievalAPIWrapper(BaseModel):
 
         # read the policy file from current directory
         policy_file = f"policy-{app_name}.json"
-        logger.warning(f"Reading policy file: {policy_file}")
         if os.path.exists(policy_file):
             with open(policy_file, "r") as f:
                 policy_data = json.load(f)
