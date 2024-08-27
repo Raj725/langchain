@@ -102,6 +102,7 @@ class PebbloRetrievalQA(Chain):
         _run_manager = run_manager or CallbackManagerForChainRun.get_noop_manager()
         question = inputs[self.input_key]
         auth_context = inputs.get(self.auth_context_key)
+        auth_context = self.pb_client.enforce_identity_policy(auth_context)
         semantic_context = self.pb_client.get_semantic_context()
         _, prompt_entities = self.pb_client.check_prompt_validity(question)
 
