@@ -36,6 +36,7 @@ from langchain_community.chains.pebblo_retrieval.models import (
 from langchain_community.chains.pebblo_retrieval.utilities import (
     PLUGIN_VERSION,
     PebbloRetrievalAPIWrapper,
+    PolicySource,
     get_runtime,
 )
 
@@ -256,6 +257,7 @@ class PebbloRetrievalQA(Chain):
             classifier_location=classifier_location,
             classifier_url=classifier_url,
             app_name=app_name,
+            policy_source=PolicySource.CLOUD,
         )
         # send app discovery request
         pb_client.send_app_discover(app)
