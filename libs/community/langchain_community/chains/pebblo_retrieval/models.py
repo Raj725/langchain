@@ -187,3 +187,31 @@ class PolicyConfig(BaseModel):
     semantics: Semantics = Semantics()
     geo: Optional[Geo] = None
     external_systems: Optional[ExternalSystems] = None
+
+# Policy Version 2
+class IdentityGroups(BaseModel):
+    provider: str = ""
+    groups: List[str] = []
+
+class SemanticGroup(BaseModel):
+    name : str = ""
+    deny: List[str] = []
+
+class SemanticGuardrail(BaseModel):
+    entity: SemanticGroup = SemanticGroup()
+    topic: SemanticGroup = SemanticGroup()
+
+class ExceptionConfig(BaseModel):
+    grant_full_access: bool = False
+    # Grant Full Access to specific groups
+
+class Policy(BaseModel):
+    schema_version: int = 2
+    groups: IdentityGroups = IdentityGroups()
+    # Identity Provider and Groups
+    semantic_guardrail: SemanticGuardrail = SemanticGuardrail()
+    # Semantic Guardrail for Entities and Topics
+    exception: ExceptionConfig = ExceptionConfig()
+    # Exception Configuration
+
+
