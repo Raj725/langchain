@@ -169,8 +169,8 @@ class SemanticGuardrail(BaseModel):
         topics (Optional[Set[str]]): A set of topic restrictions.
     """
 
-    entities: Optional[Set[str]] = set()
-    topics: Optional[Set[str]] = set()
+    entities: Set[str] = set()
+    topics: Set[str] = set()
 
 
 class PolicyConfig(BaseModel):

@@ -384,10 +384,10 @@ class PebbloRetrievalAPIWrapper(BaseModel):
             logger.warning(f"User {auth_context.user_id} is not a superuser.")
 
         # Generate semantic context
-        semantic_context = self.generate_semantic_context(user_auth)
+        semantic_context = self._generate_semantic_context(user_auth)
         return auth_context, semantic_context, False
 
-    def generate_semantic_context(self, user_auth: list) -> Optional[SemanticContext]:
+    def _generate_semantic_context(self, user_auth: list) -> Optional[SemanticContext]:
         """
         Generate semantic context based on the given user identities.
 
@@ -398,11 +398,14 @@ class PebbloRetrievalAPIWrapper(BaseModel):
             Optional[SemanticContext]: Semantic context.
         """
         semantic_context = None
-        _all_guardrails = [
-            guardrail
-            for identity in user_auth
-            if (guardrail := self.policy_cache.userSemanticGuardrail.get(identity))
-        ]
+        _all_guardrails = []
+        if not self.policy_cache or not self.policy_cache.userSemanticGuardrail:
+            return semantic_context
+
+        for identity in user_auth:
+            if guardrail := self.policy_cache.userSemanticGuardrail.get(identity):
+                _all_guardrails.append(guardrail)
+
         if _all_guardrails:
             # Combine entities and topics to deny from all guardrails
             entities_to_deny = set.intersection(
@@ -412,10 +415,10 @@ class PebbloRetrievalAPIWrapper(BaseModel):
                 *[_guardrail.topics for _guardrail in _all_guardrails]
             )
             # Generate semantic context from the deny entities and topics
-            semantic_context = dict()
-            semantic_context["pebblo_semantic_entities"] = {"deny": entities_to_deny}
-            semantic_context["pebblo_semantic_topics"] = {"deny": topics_to_deny}
-            semantic_context = SemanticContext(**semantic_context)
+            _semantic_context = dict()
+            _semantic_context["pebblo_semantic_entities"] = {"deny": entities_to_deny}
+            _semantic_context["pebblo_semantic_topics"] = {"deny": topics_to_deny}
+            semantic_context = SemanticContext(**_semantic_context)
         return semantic_context
 
     def _start_policy_refresh_thread(self) -> None:
@@ -427,7 +430,7 @@ class PebbloRetrievalAPIWrapper(BaseModel):
         """Fetch policy from the Pebblo cloud or a file at regular intervals."""
         while True:
             try:
-                if self.policy_source == "file":
+                if self.policy_source == PolicySource.FILE:
                     # Read policy from a file
                     policy = self.get_policy_from_file(self.app_name)
                 else:
@@ -435,7 +438,8 @@ class PebbloRetrievalAPIWrapper(BaseModel):
                     policy = self.get_policy_from_api(self.app_name)
 
                 # Update the local cache with the fetched policy
-                self._update_local_policy_cache(policy)
+                self.policy_cache = policy
+                logger.warning(f"Policy cache updated: {self.policy_cache}")
             except Exception as e:
                 logger.warning(f"Failed to fetch policy: {e}")
             # Sleep for the refresh interval
@@ -484,32 +488,6 @@ class PebbloRetrievalAPIWrapper(BaseModel):
         else:
             logger.warning(f"Policy file {policy_file} not found.")
         return None
-
-    def _update_local_policy_cache(self, policy: Optional[PolicyConfig]) -> None:
-        """Update the local cache with the fetched policy."""
-        semantic_context = None
-        if policy:
-            # Generate semantic context from the policy
-            semantic_context = self._generate_semantic_context(policy)
-        self.policy_cache = (policy, semantic_context)
-        logger.warning(f"Policy cache updated: {self.policy_cache}")
-
-    def _get_semantic_context(self, policy: PolicyConfig) -> SemanticContext:
-        semantic_context = dict()
-
-        if policy.entity:
-            # Get entities from deny groups
-            entities_to_deny = self.get_entities_from_groups(policy.entity.deny_groups)
-            # Add entities to deny list
-            entities_to_deny.extend(policy.entity.deny)
-            semantic_context["pebblo_semantic_entities"] = {"deny": entities_to_deny}
-        if policy.semantics:
-            # Get topics from deny groups
-            topics_to_deny = self.get_topics_from_groups(policy.semantics.deny_groups)
-            # Add topics to deny list
-            topics_to_deny.extend(policy.semantics.deny)
-            semantic_context["pebblo_semantic_topics"] = {"deny": topics_to_deny}
-        return SemanticContext(**semantic_context)
 
     def _make_headers(self, cloud_request: bool = False) -> dict:
         """
