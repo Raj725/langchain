@@ -121,7 +121,7 @@ class PebbloRetrievalQA(Chain):
             )
         else:
             docs = self._get_docs(
-                question, auth_context, is_superuser, semantic_context
+                question, auth_context, semantic_context, is_superuser
             )  # type: ignore[call-arg]
         answer = self.combine_documents_chain.run(
             input_documents=docs, question=question, callbacks=_run_manager.get_child()
