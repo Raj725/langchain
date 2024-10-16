@@ -36,6 +36,7 @@ from langchain_community.chains.pebblo_retrieval.models import (
 from langchain_community.chains.pebblo_retrieval.utilities import (
     PLUGIN_VERSION,
     PebbloRetrievalAPIWrapper,
+    PolicySource,
     get_runtime,
 )
 
@@ -102,7 +103,8 @@ class PebbloRetrievalQA(Chain):
         _run_manager = run_manager or CallbackManagerForChainRun.get_noop_manager()
         question = inputs[self.input_key]
         auth_context = inputs.get(self.auth_context_key)
-        semantic_context = inputs.get(self.semantic_context_key)
+        auth_context = self.pb_client.enforce_identity_policy(auth_context)
+        semantic_context = self.pb_client.get_semantic_context()
         _, prompt_entities = self.pb_client.check_prompt_validity(question)
 
         accepts_run_manager = (
@@ -254,6 +256,8 @@ class PebbloRetrievalQA(Chain):
             api_key=api_key,
             classifier_location=classifier_location,
             classifier_url=classifier_url,
+            app_name=app_name,
+            policy_source=PolicySource.CLOUD,
         )
         # send app discovery request
         pb_client.send_app_discover(app)
