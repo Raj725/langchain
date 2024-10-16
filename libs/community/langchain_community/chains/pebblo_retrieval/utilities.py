@@ -117,10 +117,7 @@ class PebbloRetrievalAPIWrapper(BaseModel):
     """Name of the app"""
     policy_source: PolicySource = PolicySource.FILE
     """Source of the policy, file or cloud"""
-    policy_cache: Tuple[Optional[PolicyConfig], Optional[SemanticContext]] = (
-        None,
-        None,
-    )
+    policy_cache: Optional[PolicyConfig] = None
     """Local cache for the policy"""
 
     def __init__(self, **kwargs: Any):
@@ -357,37 +354,69 @@ class PebbloRetrievalAPIWrapper(BaseModel):
                 prompt_entities["entityCount"] = pebblo_resp.get("entityCount", 0)
         return is_valid_prompt, prompt_entities
 
-    def get_semantic_context(self) -> Optional[SemanticContext]:
-        """Get the semantic context from the local cache."""
-        return self.policy_cache[1] if self.policy_cache else None
-
     def enforce_identity_policy(
         self, auth_context: Optional[AuthContext]
-    ) -> Optional[AuthContext]:
+    ) -> Tuple[Optional[AuthContext], Optional[SemanticContext], bool]:
         """
-        Enforce identity policy on the given auth context.
+        Enforce identity policy based on the given auth context.
 
         Args:
             auth_context (Optional[AuthContext]): Authentication context.
 
         Returns:
             Optional[AuthContext]: Enforced authentication context.
+            Optional[SemanticContext]: Semantic context.
+            bool: True if the user is a superuser, False otherwise.
         """
         if not auth_context:
-            return None
+            return None, None, False
 
-        policy = self.policy_cache[0]
         # Get superusers from the policy
-        superusers = policy.identity.superuser if policy else []
-
-        # Check if the user is superuser using the user_id in policy and auth_context
-        if auth_context.user_id in [superuser.name for superuser in superusers]:
-            logger.warning(f"User {auth_context.user_id} is a superuser.")
-            # If the user is superuser, then return None(todo: Update later)
-            return None
+        superusers = self.policy_cache.superusers if self.policy_cache else set()
+        # Check if user is a superuser
+        user_auth = auth_context.user_auth if auth_context.user_auth else []
+        is_superuser = any(_identity in superusers for _identity in user_auth)
+        if is_superuser:
+            # return None in Semantic context and True for superuser
+            logger.info(f"User {auth_context.user_id} is a superuser.")
+            return auth_context, None, True
         else:
             logger.warning(f"User {auth_context.user_id} is not a superuser.")
-        return auth_context
+
+        # Generate semantic context
+        semantic_context = self.generate_semantic_context(user_auth)
+        return auth_context, semantic_context, False
+
+    def generate_semantic_context(self, user_auth: list) -> Optional[SemanticContext]:
+        """
+        Generate semantic context based on the given user identities.
+
+        Args:
+            user_auth (list): List of user identities.
+
+        Returns:
+            Optional[SemanticContext]: Semantic context.
+        """
+        semantic_context = None
+        _all_guardrails = [
+            guardrail
+            for identity in user_auth
+            if (guardrail := self.policy_cache.userSemanticGuardrail.get(identity))
+        ]
+        if _all_guardrails:
+            # Combine entities and topics to deny from all guardrails
+            entities_to_deny = set.intersection(
+                *[_guardrail.entities for _guardrail in _all_guardrails]
+            )
+            topics_to_deny = set.intersection(
+                *[_guardrail.topics for _guardrail in _all_guardrails]
+            )
+            # Generate semantic context from the deny entities and topics
+            semantic_context = dict()
+            semantic_context["pebblo_semantic_entities"] = {"deny": entities_to_deny}
+            semantic_context["pebblo_semantic_topics"] = {"deny": topics_to_deny}
+            semantic_context = SemanticContext(**semantic_context)
+        return semantic_context
 
     def _start_policy_refresh_thread(self) -> None:
         """Start a thread to fetch policy from the Pebblo cloud."""
@@ -447,7 +476,7 @@ class PebbloRetrievalAPIWrapper(BaseModel):
         """
 
         # read the policy file from current directory
-        policy_file = f"policy-{app_name}.json"
+        policy_file = "policy.json"
         if os.path.exists(policy_file):
             with open(policy_file, "r") as f:
                 policy_data = json.load(f)
@@ -465,8 +494,9 @@ class PebbloRetrievalAPIWrapper(BaseModel):
         self.policy_cache = (policy, semantic_context)
         logger.warning(f"Policy cache updated: {self.policy_cache}")
 
-    def _generate_semantic_context(self, policy: PolicyConfig) -> SemanticContext:
+    def _get_semantic_context(self, policy: PolicyConfig) -> SemanticContext:
         semantic_context = dict()
+
         if policy.entity:
             # Get entities from deny groups
             entities_to_deny = self.get_entities_from_groups(policy.entity.deny_groups)
@@ -480,40 +510,6 @@ class PebbloRetrievalAPIWrapper(BaseModel):
             topics_to_deny.extend(policy.semantics.deny)
             semantic_context["pebblo_semantic_topics"] = {"deny": topics_to_deny}
         return SemanticContext(**semantic_context)
-
-    @staticmethod
-    def get_entities_from_groups(entity_groups: List[str]) -> List[str]:
-        """
-        Get the entities from entity groups from the Pebblo Cloud.
-
-        Args:
-            entity_groups (List[str]): List of entity groups.
-
-        Returns:
-            List[str]: List of entities.
-        """
-        entities = []
-        for entity_group in entity_groups:
-            # temporary return the entity group as entity
-            entities.append(entity_group)
-        return entities
-
-    @staticmethod
-    def get_topics_from_groups(topic_groups: List[str]) -> List[str]:
-        """
-        Get the topics from topic groups from the Pebblo Cloud.
-
-        Args:
-            topic_groups (List[str]): List of topic groups.
-
-        Returns:
-            List[str]: List of topics.
-        """
-        topics = []
-        for topic_group in topic_groups:
-            # temporary return the topic group as topic
-            topics.append(topic_group)
-        return topics
 
     def _make_headers(self, cloud_request: bool = False) -> dict:
         """

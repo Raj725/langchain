@@ -1,6 +1,7 @@
 """Models for the PebbloRetrievalQA chain."""
 
-from typing import Any, List, Optional, Union
+from enum import Enum
+from typing import Any, List, Optional, Set, Union
 
 from pydantic import BaseModel
 
@@ -10,7 +11,7 @@ class AuthContext(BaseModel):
 
     name: Optional[str] = None
     user_id: str
-    user_auth: List[str]
+    user_auth: List[str] = []
     """List of user authorizations, which may include their User ID and 
     the groups they are part of"""
 
@@ -151,67 +152,37 @@ class Qa(BaseModel):
     classifier_location: str
 
 
-class Superuser(BaseModel):
-    name: str
-    level: Optional[str] = None
+class PolicyType(Enum):
+    """Enums for policy types"""
+
+    IDENTITY = "identity"
+    APPLICATION = "application"
+    COST = "cost"
 
 
-class Identity(BaseModel):
-    superuser: List[Superuser] = []
+class SemanticGuardrail(BaseModel):
+    """
+    Semantic Guardrail for Entities and Topics (Restrictions).
 
+    Attributes:
+        entities (Optional[Set[str]]): A set of entity restrictions.
+        topics (Optional[Set[str]]): A set of topic restrictions.
+    """
 
-class Entity(BaseModel):
-    deny: List[str] = []
-    deny_groups: List[str] = []
-
-
-class Semantics(BaseModel):
-    deny: List[str] = []
-    deny_groups: List[str] = []
-
-
-class Geo(BaseModel):
-    deny: List[str] = []
-    allow: Optional[List[str]] = None
-    unspecified_action: str = "deny"
-
-
-class ExternalSystems(BaseModel):
-    pass
+    entities: Optional[Set[str]] = set()
+    topics: Optional[Set[str]] = set()
 
 
 class PolicyConfig(BaseModel):
+    """
+    Policy for access control.
+
+    Attributes:
+        superusers (Set[str]): List of superusers with full access.
+        userSemanticGuardrail (dict[str, SemanticGuardrail]): Mapping of identities to
+            semantic guardrail restrictions.
+    """
+
     schema_version: int = 1
-    identity: Identity = Identity()
-    entity: Entity = Entity()
-    semantics: Semantics = Semantics()
-    geo: Optional[Geo] = None
-    external_systems: Optional[ExternalSystems] = None
-
-# Policy Version 2
-class IdentityGroups(BaseModel):
-    provider: str = ""
-    groups: List[str] = []
-
-class SemanticGroup(BaseModel):
-    name : str = ""
-    deny: List[str] = []
-
-class SemanticGuardrail(BaseModel):
-    entity: SemanticGroup = SemanticGroup()
-    topic: SemanticGroup = SemanticGroup()
-
-class ExceptionConfig(BaseModel):
-    grant_full_access: bool = False
-    # Grant Full Access to specific groups
-
-class Policy(BaseModel):
-    schema_version: int = 2
-    groups: IdentityGroups = IdentityGroups()
-    # Identity Provider and Groups
-    semantic_guardrail: SemanticGuardrail = SemanticGuardrail()
-    # Semantic Guardrail for Entities and Topics
-    exception: ExceptionConfig = ExceptionConfig()
-    # Exception Configuration
-
-
+    superusers: Set[str] = set()
+    userSemanticGuardrail: dict[str, SemanticGuardrail] = {}
