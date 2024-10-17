@@ -186,3 +186,6 @@ class PolicyConfig(BaseModel):
     schema_version: int = 1
     superusers: Set[str] = set()
     userSemanticGuardrail: dict[str, SemanticGuardrail] = {}
+
+    class Config:
+        extra = "ignore"

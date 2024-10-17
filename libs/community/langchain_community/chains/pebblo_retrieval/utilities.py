@@ -45,7 +45,7 @@ class Routes(str, Enum):
     retrieval_app_discover = "/v1/app/discover"
     prompt = "/v1/prompt"
     prompt_governance = "/v1/prompt/governance"
-    app_policy = "/v1/app/policy"
+    policy = "/v1/policy"
 
 
 class PolicySource(str, Enum):
@@ -378,10 +378,10 @@ class PebbloRetrievalAPIWrapper(BaseModel):
         is_superuser = any(_identity in superusers for _identity in user_auth)
         if is_superuser:
             # return None in Semantic context and True for superuser
-            logger.info(f"User {auth_context.user_id} is a superuser.")
+            logger.debug(f"User {auth_context.user_id} is a superuser.")
             return auth_context, None, True
         else:
-            logger.warning(f"User {auth_context.user_id} is not a superuser.")
+            logger.debug(f"User {auth_context.user_id} is not a superuser.")
 
         # Generate semantic context
         semantic_context = self._generate_semantic_context(user_auth)
@@ -423,6 +423,7 @@ class PebbloRetrievalAPIWrapper(BaseModel):
 
     def _start_policy_refresh_thread(self) -> None:
         """Start a thread to fetch policy from the Pebblo cloud."""
+        logger.info(f"Starting policy refresh thread. {self.policy_source}")
         policy_thread = threading.Thread(target=self._fetch_policy, daemon=True)
         policy_thread.start()
 
@@ -438,8 +439,9 @@ class PebbloRetrievalAPIWrapper(BaseModel):
                     policy = self.get_policy_from_api(self.app_name)
 
                 # Update the local cache with the fetched policy
-                self.policy_cache = policy
-                logger.warning(f"Policy cache updated: {self.policy_cache}")
+                if policy:
+                    self.policy_cache = policy
+                    logger.debug(f"Policy cache updated: {self.policy_cache}")
             except Exception as e:
                 logger.warning(f"Failed to fetch policy: {e}")
             # Sleep for the refresh interval
@@ -456,7 +458,7 @@ class PebbloRetrievalAPIWrapper(BaseModel):
             Optional[Dict[str, Any]]: Policy for the app.
         """
         policy_obj = None
-        policy_url = f"{self.cloud_url}{Routes.app_policy}"
+        policy_url = f"{self.cloud_url}{Routes.policy}"
         headers = self._make_headers(cloud_request=True)
         payload = {"app_name": app_name}
         response = self.make_request("POST", policy_url, headers, payload)
@@ -484,7 +486,7 @@ class PebbloRetrievalAPIWrapper(BaseModel):
         if os.path.exists(policy_file):
             with open(policy_file, "r") as f:
                 policy_data = json.load(f)
-            return PolicyConfig(**policy_data)
+            return PolicyConfig(**policy_data.get("policy"))
         else:
             logger.warning(f"Policy file {policy_file} not found.")
         return None
