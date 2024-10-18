@@ -273,7 +273,7 @@ class PebbloRetrievalQA(Chain):
             classifier_location=classifier_location,
             classifier_url=classifier_url,
             app_name=app_name,
-            policy_source=PolicySource.CLOUD,
+            policy_source=PolicySource.PEBBLO_CLOUD,
         )
         # send app discovery request
         pb_client.send_app_discover(app)

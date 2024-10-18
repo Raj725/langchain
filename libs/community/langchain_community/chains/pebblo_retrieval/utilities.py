@@ -45,14 +45,19 @@ class Routes(str, Enum):
     retrieval_app_discover = "/v1/app/discover"
     prompt = "/v1/prompt"
     prompt_governance = "/v1/prompt/governance"
-    policy = "/v1/policy"
+    policy = "/v1/app/policy"
 
 
 class PolicySource(str, Enum):
     """Policy source enumerator."""
 
     FILE = "file"
-    CLOUD = "cloud"
+    PEBBLO_CLOUD = "pebblo_cloud"
+
+class PolicyType(str, Enum):
+    """Policy type enumerator."""
+    IDENTITY = "identity"
+    APPLICATION = "application"
 
 
 def get_runtime() -> Tuple[Framework, Runtime]:
@@ -115,7 +120,7 @@ class PebbloRetrievalAPIWrapper(BaseModel):
     """URL of the Pebblo Cloud"""
     app_name: str
     """Name of the app"""
-    policy_source: PolicySource = PolicySource.FILE
+    policy_source: PolicySource = PolicySource.PEBBLO_CLOUD
     """Source of the policy, file or cloud"""
     policy_cache: Optional[PolicyConfig] = None
     """Local cache for the policy"""
@@ -460,10 +465,12 @@ class PebbloRetrievalAPIWrapper(BaseModel):
         policy_obj = None
         policy_url = f"{self.cloud_url}{Routes.policy}"
         headers = self._make_headers(cloud_request=True)
-        payload = {"app_name": app_name}
+        payload = {"app_name": app_name, "policy_type": PolicyType.IDENTITY.value}
+
         response = self.make_request("POST", policy_url, headers, payload)
         if response and response.status_code == HTTPStatus.OK:
-            policy = response.json()
+            resp = response.json()
+            policy = resp.get("policy")
             policy_obj = PolicyConfig(**policy)
         else:
             logger.warning(f"Failed to fetch policy for {app_name}")
