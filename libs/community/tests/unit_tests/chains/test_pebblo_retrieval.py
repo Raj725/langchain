@@ -2,8 +2,8 @@
 Unit tests for the PebbloRetrievalQA chain
 """
 
-from typing import List
-from unittest.mock import Mock
+from typing import Generator, List
+from unittest.mock import Mock, patch
 
 import pytest
 from langchain_core.callbacks import (
@@ -70,8 +70,23 @@ def pebblo_retrieval_qa(retriever: FakeRetriever) -> PebbloRetrievalQA:
         description="description",
         app_name="app_name",
     )
-
+    pebblo_retrieval_qa.pb_client = Mock()
+    pebblo_retrieval_qa.pb_client.send_prompt = Mock()
+    pebblo_retrieval_qa.pb_client.enforce_identity_policy = Mock(
+        return_value=(None, None, False)
+    )
+    pebblo_retrieval_qa.pb_client.check_prompt_validity = Mock(
+        return_value=(None, dict())
+    )
     return pebblo_retrieval_qa
+
+
+@pytest.fixture
+def mock_set_enforcement_filters() -> Generator[Mock, None, None]:
+    with patch(
+        "langchain_community.chains.pebblo_retrieval.base.set_enforcement_filters"
+    ) as mock:
+        yield mock
 
 
 def test_invoke(pebblo_retrieval_qa: PebbloRetrievalQA) -> None:
@@ -132,3 +147,36 @@ def test_validate_vectorstore(retriever: FakeRetriever) -> None:
         "Vectorstore must be an instance of one of the supported vectorstores"
         in str(exc_info.value)
     )
+
+
+@pytest.mark.parametrize(
+    "is_superuser, expected_count",
+    [
+        (True, 0),  # Superuser: set_enforcement_filters should not be called
+        (False, 1),  # Non-superuser: set_enforcement_filters should be called once
+    ],
+)
+def test_policy_enforcement(
+    pebblo_retrieval_qa: PebbloRetrievalQA,
+    mock_set_enforcement_filters: Mock,
+    is_superuser: bool,
+    expected_count: int,
+) -> None:
+    """
+    Test policy enforcement for both superuser and non-superuser.
+    The mock_get_semantic_context and set_enforcement_filters methods should be called
+    based on the user's role. Superuser should not have any enforcement filters.
+    """
+    question = "Tell me the secret of the universe"
+    auth_context = AuthContext(user_id="user@email.com", user_auth=["group1", "group2"])
+    chain_input_obj = ChainInput(query=question, auth_context=auth_context)
+
+    with patch.object(
+        pebblo_retrieval_qa.pb_client, "is_superuser", return_value=is_superuser
+    ) as mock_is_superuser, patch.object(
+        pebblo_retrieval_qa.pb_client, "get_semantic_context", return_value=None
+    ) as mock_get_semantic_context:
+        _ = pebblo_retrieval_qa.invoke(chain_input_obj.dict())
+        assert mock_is_superuser.call_count == 1
+        assert mock_get_semantic_context.call_count == expected_count
+        assert mock_set_enforcement_filters.call_count == expected_count
