@@ -103,9 +103,12 @@ class PebbloRetrievalQA(Chain):
         _run_manager = run_manager or CallbackManagerForChainRun.get_noop_manager()
         question = inputs[self.input_key]
         auth_context = inputs.get(self.auth_context_key)
-        auth_context, semantic_context, is_superuser = (
-            self.pb_client.enforce_identity_policy(auth_context)
-        )
+        semantic_context = inputs.get(self.semantic_context_key)
+        is_superuser = False
+        if self.pb_client.policy_cache:
+            auth_context, semantic_context, is_superuser = (
+                self.pb_client.enforce_identity_policy(auth_context)
+            )
         _, prompt_entities = self.pb_client.check_prompt_validity(question)
 
         accepts_run_manager = (
@@ -164,9 +167,12 @@ class PebbloRetrievalQA(Chain):
         _run_manager = run_manager or AsyncCallbackManagerForChainRun.get_noop_manager()
         question = inputs[self.input_key]
         auth_context = inputs.get(self.auth_context_key)
-        auth_context, semantic_context, is_superuser = (
-            self.pb_client.enforce_identity_policy(auth_context)
-        )
+        semantic_context = inputs.get(self.semantic_context_key)
+        is_superuser = False
+        if self.pb_client.policy_cache:
+            auth_context, semantic_context, is_superuser = (
+                self.pb_client.enforce_identity_policy(auth_context)
+            )
 
         accepts_run_manager = (
             "run_manager" in inspect.signature(self._aget_docs).parameters
