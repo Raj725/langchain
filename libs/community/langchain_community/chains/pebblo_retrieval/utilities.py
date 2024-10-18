@@ -361,71 +361,61 @@ class PebbloRetrievalAPIWrapper(BaseModel):
                 prompt_entities["entityCount"] = pebblo_resp.get("entityCount", 0)
         return is_valid_prompt, prompt_entities
 
-    def enforce_identity_policy(
-        self, auth_context: Optional[AuthContext]
-    ) -> Tuple[Optional[AuthContext], Optional[SemanticContext], bool]:
+    def is_superuser(self, auth_context: Optional[AuthContext]) -> bool:
         """
-        Enforce identity policy based on the given auth context.
+        Check if the user is a superuser based on the given auth context.
 
         Args:
             auth_context (Optional[AuthContext]): Authentication context.
 
         Returns:
-            Optional[AuthContext]: Enforced authentication context.
-            Optional[SemanticContext]: Semantic context.
             bool: True if the user is a superuser, False otherwise.
         """
-        if not auth_context:
-            return None, None, False
+        if not auth_context or not self.policy_cache:
+            return False
 
         # Get superusers from the policy
-        superusers = self.policy_cache.superusers if self.policy_cache else set()
+        superusers = self.policy_cache.superusers
+        if not superusers:
+            logger.debug("Superusers not found in the policy.")
+            return False
+
         # Check if user is a superuser
         user_auth = auth_context.user_auth if auth_context.user_auth else []
         is_superuser = any(_identity in superusers for _identity in user_auth)
         if is_superuser:
-            # return None in Semantic context and True for superuser
             logger.debug(f"User {auth_context.user_id} is a superuser.")
-            return auth_context, None, True
         else:
             logger.debug(f"User {auth_context.user_id} is not a superuser.")
+        return is_superuser
 
-        # Generate semantic context
-        semantic_context = self._generate_semantic_context(user_auth)
-        return auth_context, semantic_context, False
-
-    def _generate_semantic_context(self, user_auth: list) -> Optional[SemanticContext]:
+    def get_semantic_context(
+        self, auth_context: Optional[AuthContext]
+    ) -> Optional[SemanticContext]:
         """
-        Generate semantic context based on the given user identities.
+        Generate semantic context based on the given auth context.
 
         Args:
-            user_auth (list): List of user identities.
+            auth_context (Optional[AuthContext]): Authentication context.
 
         Returns:
             Optional[SemanticContext]: Semantic context.
         """
         semantic_context = None
-        _all_guardrails = []
-        if not self.policy_cache or not self.policy_cache.userSemanticGuardrail:
+        if not auth_context or not self.policy_cache:
             return semantic_context
 
+        user_semantic_guardrail = self.policy_cache.userSemanticGuardrail
+        if not user_semantic_guardrail:
+            return semantic_context
+
+        _all_guardrails = []
+        user_auth = auth_context.user_auth if auth_context.user_auth else []
         for identity in user_auth:
             if guardrail := self.policy_cache.userSemanticGuardrail.get(identity):
                 _all_guardrails.append(guardrail)
 
-        if _all_guardrails:
-            # Combine entities and topics to deny from all guardrails
-            entities_to_deny = set.intersection(
-                *[_guardrail.entities for _guardrail in _all_guardrails]
-            )
-            topics_to_deny = set.intersection(
-                *[_guardrail.topics for _guardrail in _all_guardrails]
-            )
-            # Generate semantic context from the deny entities and topics
-            _semantic_context = dict()
-            _semantic_context["pebblo_semantic_entities"] = {"deny": entities_to_deny}
-            _semantic_context["pebblo_semantic_topics"] = {"deny": topics_to_deny}
-            semantic_context = SemanticContext(**_semantic_context)
+        semantic_context = self._combine_all_semantic_filters(_all_guardrails)
         return semantic_context
 
     def _start_policy_refresh_thread(self) -> None:
@@ -476,6 +466,34 @@ class PebbloRetrievalAPIWrapper(BaseModel):
         else:
             logger.warning(f"Failed to fetch policy for {app_name}")
         return policy_obj
+
+    @staticmethod
+    def _combine_all_semantic_filters(
+        all_guardrails: Optional[list] = None,
+    ) -> Optional[SemanticContext]:
+        """
+        Combine all guardrails to generate semantic context.
+
+        :param all_guardrails: List of guardrails.
+        :return: SemanticContext
+        """
+        if not all_guardrails:
+            return None
+
+        # Combine entities and topics to deny from all guardrails
+        entities_to_deny = set.intersection(
+            *[_guardrail.entities for _guardrail in all_guardrails]
+        )
+        topics_to_deny = set.intersection(
+            *[_guardrail.topics for _guardrail in all_guardrails]
+        )
+
+        # Generate semantic context from the deny entities and topics
+        _semantic_context = dict()
+        _semantic_context["pebblo_semantic_entities"] = {"deny": entities_to_deny}
+        _semantic_context["pebblo_semantic_topics"] = {"deny": topics_to_deny}
+        semantic_context = SemanticContext(**_semantic_context)
+        return semantic_context
 
     @staticmethod
     def get_policy_from_file(app_name: str) -> Optional[PolicyConfig]:

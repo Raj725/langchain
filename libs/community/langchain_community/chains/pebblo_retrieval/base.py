@@ -103,12 +103,10 @@ class PebbloRetrievalQA(Chain):
         _run_manager = run_manager or CallbackManagerForChainRun.get_noop_manager()
         question = inputs[self.input_key]
         auth_context = inputs.get(self.auth_context_key)
-        semantic_context = inputs.get(self.semantic_context_key)
-        is_superuser = False
-        if self.pb_client.policy_cache:
-            auth_context, semantic_context, is_superuser = (
-                self.pb_client.enforce_identity_policy(auth_context)
-            )
+        is_superuser = self.pb_client.is_superuser(auth_context)
+        semantic_context = self.determine_semantic_context(
+            is_superuser, auth_context, inputs
+        )
         _, prompt_entities = self.pb_client.check_prompt_validity(question)
 
         accepts_run_manager = (
@@ -167,13 +165,10 @@ class PebbloRetrievalQA(Chain):
         _run_manager = run_manager or AsyncCallbackManagerForChainRun.get_noop_manager()
         question = inputs[self.input_key]
         auth_context = inputs.get(self.auth_context_key)
-        semantic_context = inputs.get(self.semantic_context_key)
-        is_superuser = False
-        if self.pb_client.policy_cache:
-            auth_context, semantic_context, is_superuser = (
-                self.pb_client.enforce_identity_policy(auth_context)
-            )
-
+        is_superuser = self.pb_client.is_superuser(auth_context)
+        semantic_context = self.determine_semantic_context(
+            is_superuser, auth_context, inputs
+        )
         accepts_run_manager = (
             "run_manager" in inspect.signature(self._aget_docs).parameters
         )
@@ -341,6 +336,31 @@ class PebbloRetrievalQA(Chain):
         return await self.retriever.aget_relevant_documents(
             question, callbacks=run_manager.get_child()
         )
+
+    def determine_semantic_context(
+        self,
+        is_superuser: bool,
+        auth_context: Optional[AuthContext],
+        inputs: Dict[str, Any],
+    ) -> Optional[SemanticContext]:
+        """
+        Determine semantic context based on the auth_context or inputs.
+
+        Args:
+            is_superuser (bool): If the user is a superuser.
+            auth_context (Optional[AuthContext]): Authentication context.
+            inputs (Dict[str, Any]): Input dictionary containing various parameters.
+
+        Returns:
+            Optional[SemanticContext]: Resolved semantic context.
+        """
+        semantic_context = None
+        if not is_superuser:
+            # Get semantic context from policy if present otherwise from inputs
+            semantic_context = self.pb_client.get_semantic_context(
+                auth_context
+            ) or inputs.get(self.semantic_context_key)
+        return semantic_context
 
     @staticmethod
     def _get_app_details(  # type: ignore
