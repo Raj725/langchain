@@ -149,7 +149,7 @@ class PebbloRetrievalAPIWrapper(BaseModel):
             app (App): App instance to be discovered.
         """
         pebblo_resp = None
-        payload = app.dict(exclude_unset=True)
+        payload = app.model_dump(exclude_unset=True)
 
         if self.classifier_location == "local":
             # Send app details to local classifier
@@ -606,7 +606,7 @@ class PebbloRetrievalAPIWrapper(BaseModel):
         timeout: int = 20,
     ) -> Any:
         """
-        Make a async request to the Pebblo server/cloud API.
+        Make an async request to the Pebblo server/cloud API.
 
         Args:
             method (str): HTTP method (GET, POST, PUT, DELETE, etc.).
@@ -704,4 +704,4 @@ class PebbloRetrievalAPIWrapper(BaseModel):
             else [],
             classifier_location=self.classifier_location,
         )
-        return qa.dict(exclude_unset=True)
+        return qa.model_dump(exclude_unset=True)
