@@ -36,6 +36,7 @@ from langchain_community.chains.pebblo_retrieval.models import (
 from langchain_community.chains.pebblo_retrieval.utilities import (
     PLUGIN_VERSION,
     PebbloRetrievalAPIWrapper,
+    PolicySource,
     get_runtime,
 )
 
@@ -102,7 +103,9 @@ class PebbloRetrievalQA(Chain):
         _run_manager = run_manager or CallbackManagerForChainRun.get_noop_manager()
         question = inputs[self.input_key]
         auth_context = inputs.get(self.auth_context_key)
-        semantic_context = inputs.get(self.semantic_context_key)
+        auth_context, semantic_context, is_superuser = (
+            self.pb_client.enforce_identity_policy(auth_context)
+        )
         _, prompt_entities = self.pb_client.check_prompt_validity(question)
 
         accepts_run_manager = (
@@ -110,10 +113,16 @@ class PebbloRetrievalQA(Chain):
         )
         if accepts_run_manager:
             docs = self._get_docs(
-                question, auth_context, semantic_context, run_manager=_run_manager
+                question,
+                auth_context,
+                semantic_context,
+                is_superuser,
+                run_manager=_run_manager,
             )
         else:
-            docs = self._get_docs(question, auth_context, semantic_context)  # type: ignore[call-arg]
+            docs = self._get_docs(
+                question, auth_context, semantic_context, is_superuser
+            )  # type: ignore[call-arg]
         answer = self.combine_documents_chain.run(
             input_documents=docs, question=question, callbacks=_run_manager.get_child()
         )
@@ -155,7 +164,10 @@ class PebbloRetrievalQA(Chain):
         _run_manager = run_manager or AsyncCallbackManagerForChainRun.get_noop_manager()
         question = inputs[self.input_key]
         auth_context = inputs.get(self.auth_context_key)
-        semantic_context = inputs.get(self.semantic_context_key)
+        auth_context, semantic_context, is_superuser = (
+            self.pb_client.enforce_identity_policy(auth_context)
+        )
+
         accepts_run_manager = (
             "run_manager" in inspect.signature(self._aget_docs).parameters
         )
@@ -164,10 +176,16 @@ class PebbloRetrievalQA(Chain):
 
         if accepts_run_manager:
             docs = await self._aget_docs(
-                question, auth_context, semantic_context, run_manager=_run_manager
+                question,
+                auth_context,
+                semantic_context,
+                is_superuser,
+                run_manager=_run_manager,
             )
         else:
-            docs = await self._aget_docs(question, auth_context, semantic_context)  # type: ignore[call-arg]
+            docs = await self._aget_docs(
+                question, auth_context, semantic_context, is_superuser
+            )  # type: ignore[call-arg]
         answer = await self.combine_documents_chain.arun(
             input_documents=docs, question=question, callbacks=_run_manager.get_child()
         )
@@ -254,6 +272,8 @@ class PebbloRetrievalQA(Chain):
             api_key=api_key,
             classifier_location=classifier_location,
             classifier_url=classifier_url,
+            app_name=app_name,
+            policy_source=PolicySource.PEBBLO_CLOUD,
         )
         # send app discovery request
         pb_client.send_app_discover(app)
@@ -289,11 +309,13 @@ class PebbloRetrievalQA(Chain):
         question: str,
         auth_context: Optional[AuthContext],
         semantic_context: Optional[SemanticContext],
+        is_superuser: bool = False,
         *,
         run_manager: CallbackManagerForChainRun,
     ) -> List[Document]:
         """Get docs."""
-        set_enforcement_filters(self.retriever, auth_context, semantic_context)
+        if not is_superuser:
+            set_enforcement_filters(self.retriever, auth_context, semantic_context)
         return self.retriever.get_relevant_documents(
             question, callbacks=run_manager.get_child()
         )
@@ -303,11 +325,13 @@ class PebbloRetrievalQA(Chain):
         question: str,
         auth_context: Optional[AuthContext],
         semantic_context: Optional[SemanticContext],
+        is_superuser: bool = False,
         *,
         run_manager: AsyncCallbackManagerForChainRun,
     ) -> List[Document]:
         """Get docs."""
-        set_enforcement_filters(self.retriever, auth_context, semantic_context)
+        if not is_superuser:
+            set_enforcement_filters(self.retriever, auth_context, semantic_context)
         return await self.retriever.aget_relevant_documents(
             question, callbacks=run_manager.get_child()
         )

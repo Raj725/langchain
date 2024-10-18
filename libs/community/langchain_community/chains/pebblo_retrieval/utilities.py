@@ -2,6 +2,8 @@ import json
 import logging
 import os
 import platform
+import threading
+import time
 from enum import Enum
 from http import HTTPStatus
 from typing import Any, Dict, List, Optional, Tuple
@@ -21,9 +23,11 @@ from langchain_community.chains.pebblo_retrieval.models import (
     AuthContext,
     Context,
     Framework,
+    PolicyConfig,
     Prompt,
     Qa,
     Runtime,
+    SemanticContext,
 )
 
 logger = logging.getLogger(__name__)
@@ -32,6 +36,7 @@ PLUGIN_VERSION = "0.1.1"
 
 _DEFAULT_CLASSIFIER_URL = "http://localhost:8000"
 _DEFAULT_PEBBLO_CLOUD_URL = "https://api.daxa.ai"
+_POLICY_REFRESH_INTERVAL_SEC = 300  # 5 minutes
 
 
 class Routes(str, Enum):
@@ -40,6 +45,21 @@ class Routes(str, Enum):
     retrieval_app_discover = "/v1/app/discover"
     prompt = "/v1/prompt"
     prompt_governance = "/v1/prompt/governance"
+    policy = "/v1/app/policy"
+
+
+class PolicySource(str, Enum):
+    """Policy source enumerator."""
+
+    FILE = "file"
+    PEBBLO_CLOUD = "pebblo_cloud"
+
+
+class PolicyType(str, Enum):
+    """Policy type enumerator."""
+
+    IDENTITY = "identity"
+    APPLICATION = "application"
 
 
 def get_runtime() -> Tuple[Framework, Runtime]:
@@ -100,6 +120,12 @@ class PebbloRetrievalAPIWrapper(BaseModel):
     """URL of the Pebblo Classifier"""
     cloud_url: Optional[str]
     """URL of the Pebblo Cloud"""
+    app_name: str
+    """Name of the app"""
+    policy_source: PolicySource = PolicySource.PEBBLO_CLOUD
+    """Source of the policy, file or cloud"""
+    policy_cache: Optional[PolicyConfig] = None
+    """Local cache for the policy"""
 
     def __init__(self, **kwargs: Any):
         """Validate that api key in environment."""
@@ -113,6 +139,7 @@ class PebbloRetrievalAPIWrapper(BaseModel):
             kwargs, "cloud_url", "PEBBLO_CLOUD_URL", _DEFAULT_PEBBLO_CLOUD_URL
         )
         super().__init__(**kwargs)
+        self._start_policy_refresh_thread()
 
     def send_app_discover(self, app: App) -> None:
         """
@@ -333,6 +360,144 @@ class PebbloRetrievalAPIWrapper(BaseModel):
                 prompt_entities["entities"] = pebblo_resp.get("entities", {})
                 prompt_entities["entityCount"] = pebblo_resp.get("entityCount", 0)
         return is_valid_prompt, prompt_entities
+
+    def enforce_identity_policy(
+        self, auth_context: Optional[AuthContext]
+    ) -> Tuple[Optional[AuthContext], Optional[SemanticContext], bool]:
+        """
+        Enforce identity policy based on the given auth context.
+
+        Args:
+            auth_context (Optional[AuthContext]): Authentication context.
+
+        Returns:
+            Optional[AuthContext]: Enforced authentication context.
+            Optional[SemanticContext]: Semantic context.
+            bool: True if the user is a superuser, False otherwise.
+        """
+        if not auth_context:
+            return None, None, False
+
+        # Get superusers from the policy
+        superusers = self.policy_cache.superusers if self.policy_cache else set()
+        # Check if user is a superuser
+        user_auth = auth_context.user_auth if auth_context.user_auth else []
+        is_superuser = any(_identity in superusers for _identity in user_auth)
+        if is_superuser:
+            # return None in Semantic context and True for superuser
+            logger.debug(f"User {auth_context.user_id} is a superuser.")
+            return auth_context, None, True
+        else:
+            logger.debug(f"User {auth_context.user_id} is not a superuser.")
+
+        # Generate semantic context
+        semantic_context = self._generate_semantic_context(user_auth)
+        return auth_context, semantic_context, False
+
+    def _generate_semantic_context(self, user_auth: list) -> Optional[SemanticContext]:
+        """
+        Generate semantic context based on the given user identities.
+
+        Args:
+            user_auth (list): List of user identities.
+
+        Returns:
+            Optional[SemanticContext]: Semantic context.
+        """
+        semantic_context = None
+        _all_guardrails = []
+        if not self.policy_cache or not self.policy_cache.userSemanticGuardrail:
+            return semantic_context
+
+        for identity in user_auth:
+            if guardrail := self.policy_cache.userSemanticGuardrail.get(identity):
+                _all_guardrails.append(guardrail)
+
+        if _all_guardrails:
+            # Combine entities and topics to deny from all guardrails
+            entities_to_deny = set.intersection(
+                *[_guardrail.entities for _guardrail in _all_guardrails]
+            )
+            topics_to_deny = set.intersection(
+                *[_guardrail.topics for _guardrail in _all_guardrails]
+            )
+            # Generate semantic context from the deny entities and topics
+            _semantic_context = dict()
+            _semantic_context["pebblo_semantic_entities"] = {"deny": entities_to_deny}
+            _semantic_context["pebblo_semantic_topics"] = {"deny": topics_to_deny}
+            semantic_context = SemanticContext(**_semantic_context)
+        return semantic_context
+
+    def _start_policy_refresh_thread(self) -> None:
+        """Start a thread to fetch policy from the Pebblo cloud."""
+        logger.info(f"Starting policy refresh thread. {self.policy_source}")
+        policy_thread = threading.Thread(target=self._fetch_policy, daemon=True)
+        policy_thread.start()
+
+    def _fetch_policy(self) -> None:
+        """Fetch policy from the Pebblo cloud or a file at regular intervals."""
+        while True:
+            try:
+                if self.policy_source == PolicySource.FILE:
+                    # Read policy from a file
+                    policy = self.get_policy_from_file(self.app_name)
+                else:
+                    # Fetch policy from the Pebblo cloud
+                    policy = self.get_policy_from_api(self.app_name)
+
+                # Update the local cache with the fetched policy
+                if policy:
+                    self.policy_cache = policy
+                    logger.debug(f"Policy cache updated: {self.policy_cache}")
+            except Exception as e:
+                logger.warning(f"Failed to fetch policy: {e}")
+            # Sleep for the refresh interval
+            time.sleep(_POLICY_REFRESH_INTERVAL_SEC)
+
+    def get_policy_from_api(self, app_name: str) -> Optional[PolicyConfig]:
+        """
+        Get the policy for an app from the Pebblo Cloud.
+
+        Args:
+            app_name (str): Name of the app.
+
+        Returns:
+            Optional[Dict[str, Any]]: Policy for the app.
+        """
+        policy_obj = None
+        policy_url = f"{self.cloud_url}{Routes.policy}"
+        headers = self._make_headers(cloud_request=True)
+        payload = {"app_name": app_name, "policy_type": PolicyType.IDENTITY.value}
+        response = self.make_request("POST", policy_url, headers, payload)
+        if response and response.status_code == HTTPStatus.OK:
+            resp = response.json()
+            policy = resp.get("policy")
+            policy_obj = PolicyConfig(**policy)
+        else:
+            logger.warning(f"Failed to fetch policy for {app_name}")
+        return policy_obj
+
+    @staticmethod
+    def get_policy_from_file(app_name: str) -> Optional[PolicyConfig]:
+        """
+        Get the policy for an app from the policy.json file.
+
+        Args:
+            app_name (str): Name of the app.
+
+        Returns:
+            Optional[Dict[str, Any]]: Policy for the app.
+        """
+
+        # read the policy file from current directory
+        policy_file = "policy.json"
+        if os.path.exists(policy_file):
+            with open(policy_file, "r") as f:
+                policy_data = json.load(f)
+            return PolicyConfig(**policy_data.get("policy"))
+        else:
+            logger.warning(f"Policy file {policy_file} not found.")
+        return None
 
     def _make_headers(self, cloud_request: bool = False) -> dict:
         """
