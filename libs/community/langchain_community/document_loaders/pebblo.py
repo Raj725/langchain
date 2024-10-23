@@ -41,7 +41,7 @@ class PebbloSafeLoader(BaseLoader):
         owner: str = "",
         description: str = "",
         api_key: Optional[str] = None,
-        load_semantic: bool = False,
+        load_semantic: bool = True,
         classifier_url: Optional[str] = None,
         *,
         classifier_location: str = "local",
