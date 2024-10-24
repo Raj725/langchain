@@ -428,6 +428,8 @@ class PebbloLoaderAPIWrapper(BaseModel):
     """URL of the Pebblo Cloud"""
     anonymize_snippets: bool = False
     """Whether to anonymize snippets going into VectorDB and the generated reports"""
+    upload_snippets: bool = True
+    """Whether to send snippets to Pebblo Cloud if local classifier is used"""
 
     def __init__(self, **kwargs: Any):
         """Validate that api key in environment."""
@@ -737,8 +739,7 @@ class PebbloLoaderAPIWrapper(BaseModel):
                 source_path_update = True
         return docs, source_aggregate_size
 
-    @staticmethod
-    def update_doc_data(docs: List[dict], classified_docs: dict) -> None:
+    def update_doc_data(self, docs: List[dict], classified_docs: dict) -> None:
         """
         Update the document data with classified information.
 
@@ -757,5 +758,6 @@ class PebbloLoaderAPIWrapper(BaseModel):
                     "topics": classified_data.get("topics", {}),
                 }
             )
-            # Remove the document content
-            doc_data.pop("doc")
+            if not self.upload_snippets:
+                # Remove the document content if upload_snippets is False
+                doc_data.pop("doc")
