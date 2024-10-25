@@ -46,7 +46,7 @@ class PebbloSafeLoader(BaseLoader):
         *,
         classifier_location: str = "local",
         anonymize_snippets: bool = False,
-        send_snippets_to_pebblo_cloud: bool = True,
+        send_snippets_to_pebblo_cloud: bool = False,
     ):
         if not name or not isinstance(name, str):
             raise NameError("Must specify a valid name.")

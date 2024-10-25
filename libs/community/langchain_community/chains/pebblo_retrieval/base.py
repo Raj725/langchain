@@ -249,7 +249,7 @@ class PebbloRetrievalQA(Chain):
         api_key: Optional[str] = None,
         classifier_url: Optional[str] = None,
         classifier_location: str = "local",
-        send_snippets_to_pebblo_cloud: bool = True,
+        send_snippets_to_pebblo_cloud: bool = False,
         **kwargs: Any,
     ) -> "PebbloRetrievalQA":
         """Load chain from chain type."""
