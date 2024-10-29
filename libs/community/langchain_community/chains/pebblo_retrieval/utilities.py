@@ -14,6 +14,7 @@ from langchain_core.documents import Document
 from langchain_core.env import get_runtime_environment
 from langchain_core.utils import get_from_dict_or_env
 from langchain_core.vectorstores import VectorStoreRetriever
+from openai.types.beta import VectorStore
 from pydantic import BaseModel
 from requests import Response, request
 from requests.exceptions import RequestException
@@ -100,6 +101,30 @@ def get_ip() -> str:
     except Exception:
         public_ip = socket.gethostbyname("localhost")
     return public_ip
+
+
+def get_embedding_model(vectorstore: VectorStore) -> Optional[str]:
+    """
+    Safely retrieve the embedding model from the vectorstore.
+
+    Args:
+        vectorstore: The vectorstore object from which to retrieve the embedding model.
+
+    Returns:
+        str or None: The embedding model as a string if available, otherwise None.
+    """
+    try:
+        return (
+            str(vectorstore.embeddings.model)
+            if hasattr(vectorstore, "embeddings")
+            else None
+        )
+    except AttributeError as e:
+        logger.error(f"AttributeError: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        return None
 
 
 class PebbloRetrievalAPIWrapper(BaseModel):

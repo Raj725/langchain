@@ -36,6 +36,7 @@ from langchain_community.chains.pebblo_retrieval.models import (
 from langchain_community.chains.pebblo_retrieval.utilities import (
     PLUGIN_VERSION,
     PebbloRetrievalAPIWrapper,
+    get_embedding_model,
     get_runtime,
 )
 
@@ -419,9 +420,7 @@ class PebbloRetrievalQA(Chain):
                 vector_dbs=[
                     VectorDB(
                         name=vectorstore.__class__.__name__,
-                        embedding_model=str(vectorstore.embeddings.model)
-                        if hasattr(vectorstore, "embeddings")
-                        else None,
+                        embedding_model=get_embedding_model(vectorstore),
                     )
                 ],
             ),
