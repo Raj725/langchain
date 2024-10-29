@@ -249,6 +249,7 @@ class PebbloRetrievalQA(Chain):
         api_key: Optional[str] = None,
         classifier_url: Optional[str] = None,
         classifier_location: str = "local",
+        send_snippets_to_pebblo_cloud: bool = False,
         **kwargs: Any,
     ) -> "PebbloRetrievalQA":
         """Load chain from chain type."""
@@ -273,6 +274,7 @@ class PebbloRetrievalQA(Chain):
             classifier_location=classifier_location,
             classifier_url=classifier_url,
             app_name=app_name,
+            upload_snippets=send_snippets_to_pebblo_cloud,
         )
         # send app discovery request
         pb_client.send_app_discover(app)
