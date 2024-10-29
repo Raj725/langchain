@@ -356,6 +356,7 @@ class PebbloRetrievalQA(Chain):
             List[ChainInfo]: Chain details.
         """
         llm_dict = llm.__dict__
+        vectorstore = kwargs["retriever"].vectorstore
         chains = [
             ChainInfo(
                 name=cls.__name__,
@@ -365,16 +366,10 @@ class PebbloRetrievalQA(Chain):
                 ),
                 vector_dbs=[
                     VectorDB(
-                        name=kwargs["retriever"].vectorstore.__class__.__name__,
-                        embedding_model=str(
-                            kwargs["retriever"].vectorstore._embeddings.model
-                        )
-                        if hasattr(kwargs["retriever"].vectorstore, "_embeddings")
-                        else (
-                            str(kwargs["retriever"].vectorstore._embedding.model)
-                            if hasattr(kwargs["retriever"].vectorstore, "_embedding")
-                            else None
-                        ),
+                        name=vectorstore.__class__.__name__,
+                        embedding_model=str(vectorstore.embeddings.model)
+                        if hasattr(vectorstore, "embeddings")
+                        else None,
                     )
                 ],
             ),
