@@ -149,3 +149,41 @@ class Qa(BaseModel):
     user: str
     user_identities: Optional[List[str]]
     classifier_location: str
+
+
+class Superuser(BaseModel):
+    name: str
+    level: Optional[str] = None
+
+
+class Identity(BaseModel):
+    superuser: List[Superuser] = []
+
+
+class Entity(BaseModel):
+    deny: List[str] = []
+    deny_groups: List[str] = []
+
+
+class Semantics(BaseModel):
+    deny: List[str] = []
+    deny_groups: List[str] = []
+
+
+class Geo(BaseModel):
+    deny: List[str] = []
+    allow: Optional[List[str]] = None
+    unspecified_action: str = "deny"
+
+
+class ExternalSystems(BaseModel):
+    pass
+
+
+class PolicyConfig(BaseModel):
+    schema_version: int = 1
+    identity: Identity = Identity()
+    entity: Entity = Entity()
+    semantics: Semantics = Semantics()
+    geo: Optional[Geo] = None
+    external_systems: Optional[ExternalSystems] = None
